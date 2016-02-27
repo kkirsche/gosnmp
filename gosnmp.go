@@ -12,9 +12,9 @@ import (
 	"time"
 )
 
-// GoSNMP allows for us to send the correct SNMP requests based on what the
+// Conn allows for us to send the correct SNMP requests based on what the
 // user has requested
-type GoSNMP struct {
+type Conn struct {
 	Target    string
 	Community string
 	Version   SnmpVersion
@@ -26,10 +26,10 @@ type GoSNMP struct {
 // DefaultPort is the default SNMP port
 var DefaultPort = 161
 
-// NewGoSNMP creates a new SNMP Client. Target is the IP address, Community the
+// Connect creates a new SNMP Client. Target is the IP address, Community the
 // SNMP Community String and Version the SNMP version. Currently only v2c is
 // supported. Timeout parameter is measured in seconds.
-func NewGoSNMP(target, community string, version SnmpVersion, timeout int64) (*GoSNMP, error) {
+func Connect(target, community string, version SnmpVersion, timeout int64) (*Conn, error) {
 	if !strings.Contains(target, ":") {
 		target = fmt.Sprintf("%s:%d", target, DefaultPort)
 	}
@@ -40,24 +40,24 @@ func NewGoSNMP(target, community string, version SnmpVersion, timeout int64) (*G
 	if err != nil {
 		return nil, fmt.Errorf("Error establishing connection to host: %s\n", err.Error())
 	}
-	s := &GoSNMP{target, community, version, time.Duration(timeout) * time.Second, conn, l.CreateLogger(false, false)}
+	s := &Conn{target, community, version, time.Duration(timeout) * time.Second, conn, l.CreateLogger(false, false)}
 
 	return s, nil
 }
 
 // SetVerbose enables verbose logging
-func (x *GoSNMP) SetVerbose(v bool) {
+func (x *Conn) SetVerbose(v bool) {
 	x.Log.VerboseFlag = v
 }
 
 // SetDebug enables debugging
-func (x *GoSNMP) SetDebug(d bool) {
+func (x *Conn) SetDebug(d bool) {
 	x.Log.DebugFlag = d
 }
 
 // SetTimeout sets the timeout for network read/write functions.
 // Defaults to 5 seconds.
-func (x *GoSNMP) SetTimeout(seconds int64) {
+func (x *Conn) SetTimeout(seconds int64) {
 	if seconds <= 0 {
 		seconds = 5
 	}
@@ -67,7 +67,7 @@ func (x *GoSNMP) SetTimeout(seconds int64) {
 // StreamWalk will start walking a specified OID, and push through a channel the results
 // as it receives them, without waiting for the whole process to finish to return the
 // results. Once it has completed the walk, the channel is closed.
-func (x *GoSNMP) StreamWalk(oid string, c chan SnmpPDU) error {
+func (x *Conn) StreamWalk(oid string, c chan SnmpPDU) error {
 	if oid == "" {
 		close(c)
 		return fmt.Errorf("No OID given\n")
@@ -108,7 +108,7 @@ func (x *GoSNMP) StreamWalk(oid string, c chan SnmpPDU) error {
 // channel the results as it receives them, without waiting for the whole
 // process to finish to return the results. Once it has completed the walk,
 // the channel is closed.
-func (x *GoSNMP) StreamBulkWalk(maxRepetitions uint8, oid string, resultChan chan *SnmpPDU) error {
+func (x *Conn) StreamBulkWalk(maxRepetitions uint8, oid string, resultChan chan *SnmpPDU) error {
 	rootOID := oid
 	response, err := x.GetBulk(0, maxRepetitions, oid)
 	if err != nil {
@@ -141,13 +141,13 @@ func (x *GoSNMP) StreamBulkWalk(maxRepetitions uint8, oid string, resultChan cha
 	return nil
 }
 
-func (x *GoSNMP) BulkWalk(maxRepetitions uint8, oid string) (results []SnmpPDU, err error) {
+func (x *Conn) BulkWalk(maxRepetitions uint8, oid string) (results []SnmpPDU, err error) {
 	if oid == "" {
 		return nil, fmt.Errorf("No OID given\n")
 	}
 	return x._bulkWalk(maxRepetitions, oid, oid)
 }
-func (x *GoSNMP) _bulkWalk(maxRepetitions uint8, searchingOID string, rootOID string) (results []SnmpPDU, err error) {
+func (x *Conn) _bulkWalk(maxRepetitions uint8, searchingOID string, rootOID string) (results []SnmpPDU, err error) {
 	response, err := x.GetBulk(0, maxRepetitions, searchingOID)
 	if err != nil {
 		return
@@ -174,7 +174,7 @@ func (x *GoSNMP) _bulkWalk(maxRepetitions uint8, searchingOID string, rootOID st
 }
 
 // Walk will SNMP walk the target, blocking until the process is complete
-func (x *GoSNMP) Walk(oid string) (results []SnmpPDU, err error) {
+func (x *Conn) Walk(oid string) (results []SnmpPDU, err error) {
 	if oid == "" {
 		return nil, fmt.Errorf("No OID given\n")
 	}
@@ -210,7 +210,7 @@ func (x *GoSNMP) Walk(oid string) (results []SnmpPDU, err error) {
 
 // Marshals & send an SNMP request. Unmarshals the response and returns back the parsed
 // SNMP packet
-func (x *GoSNMP) sendPacket(packet *SnmpPacket) (*SnmpPacket, error) {
+func (x *Conn) sendPacket(packet *SnmpPacket) (*SnmpPacket, error) {
 	// Set timeouts on the connection
 	deadline := time.Now()
 	x.conn.SetDeadline(deadline.Add(x.Timeout))
@@ -251,7 +251,7 @@ func (x *GoSNMP) sendPacket(packet *SnmpPacket) (*SnmpPacket, error) {
 
 // GetNext sends an SNMP Get Next Request to the target.
 // Returns the next variable response from the OID given or an error
-func (x *GoSNMP) GetNext(oid string) (*SnmpPacket, error) {
+func (x *Conn) GetNext(oid string) (*SnmpPacket, error) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
@@ -273,7 +273,7 @@ func (x *GoSNMP) GetNext(oid string) (*SnmpPacket, error) {
 }
 
 // Debug function. Unmarshals raw bytes and returns the result without the network part
-func (x *GoSNMP) Debug(data []byte) (*SnmpPacket, error) {
+func (x *Conn) Debug(data []byte) (*SnmpPacket, error) {
 	packet, err := Unmarshal(data)
 
 	if err != nil {
@@ -283,7 +283,7 @@ func (x *GoSNMP) Debug(data []byte) (*SnmpPacket, error) {
 }
 
 // GetBulk sends an SNMP BULK-GET request to the target. Returns a Variable with the response or an error
-func (x *GoSNMP) GetBulk(nonRepeaters, maxRepetitions uint8, oids ...string) (*SnmpPacket, error) {
+func (x *Conn) GetBulk(nonRepeaters, maxRepetitions uint8, oids ...string) (*SnmpPacket, error) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
@@ -309,7 +309,7 @@ func (x *GoSNMP) GetBulk(nonRepeaters, maxRepetitions uint8, oids ...string) (*S
 }
 
 // Get sends an SNMP GET request to the target. Returns a Variable with the response or an error
-func (x *GoSNMP) Get(oid string) (*SnmpPacket, error) {
+func (x *Conn) Get(oid string) (*SnmpPacket, error) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
@@ -331,7 +331,7 @@ func (x *GoSNMP) Get(oid string) (*SnmpPacket, error) {
 }
 
 // GetMulti sends an SNMP GET request to the target. Returns a Variable with the response or an error
-func (x *GoSNMP) GetMulti(oids []string) (*SnmpPacket, error) {
+func (x *Conn) GetMulti(oids []string) (*SnmpPacket, error) {
 	var err error
 	defer func() {
 		if e := recover(); e != nil {
