@@ -108,36 +108,33 @@ func (x *Conn) StreamWalk(oid string, c chan SnmpPDU) error {
 // channel the results as it receives them, without waiting for the whole
 // process to finish to return the results. Once it has completed the walk,
 // the channel is closed.
-func (x *Conn) StreamBulkWalk(maxRepetitions uint8, oid string, resultChan chan *SnmpPDU) error {
+func (x *Conn) StreamBulkWalk(maxRepetitions uint8, oid string, resultChan chan SnmpPDU) error {
+	defer close(resultChan)
 	rootOID := oid
 	response, err := x.GetBulk(0, maxRepetitions, oid)
 	if err != nil {
-		close(resultChan)
 		return err
 	}
 	for i, v := range response.Variables {
 		if v.Value == "endOfMib" {
-			close(resultChan)
 			return nil
 		}
 		// is this variable still in the requested oid range
 		if strings.HasPrefix(v.Name, rootOID) {
-			resultChan <- &v
+			resultChan <- v
 			// is the last oid received still in the requested range
 			if i == len(response.Variables)-1 {
 				var subResults []SnmpPDU
 				subResults, err = x._bulkWalk(maxRepetitions, v.Name, rootOID)
 				if err != nil {
-					close(resultChan)
 					return err
 				}
 				for _, subResult := range subResults {
-					resultChan <- &subResult
+					resultChan <- subResult
 				}
 			}
 		}
 	}
-	close(resultChan)
 	return nil
 }
 
